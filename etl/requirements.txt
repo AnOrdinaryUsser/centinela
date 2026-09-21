@@ -1,0 +1,13 @@
+# Estas versiones estan fijadas asumiendo Python 3.11 (ver README de esta
+# carpeta): a esa version del interprete todas tienen rueda (wheel)
+# precompilada para Windows, asi que no hace falta compilar nada de C/C++
+# localmente. Si usas otra version de Python y algun install falla,
+# comprueba antes que el venv se creo con Python 3.11 (python --version).
+geopandas==1.0.1
+shapely==2.0.6
+sqlalchemy==2.0.35
+geoalchemy2==0.15.2
+psycopg2-binary==2.9.9
+python-dotenv==1.0.1
+requests==2.32.3
+openpyxl==3.1.5

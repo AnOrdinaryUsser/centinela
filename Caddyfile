@@ -1,0 +1,28 @@
+# Caddy config for production. Runs INSIDE the "frontend" container (see
+# frontend/Dockerfile's final stage) and does two jobs at once: serves the
+# built React app as static files, and reverse-proxies API traffic to the
+# backend container over Docker's internal network - so the browser only
+# ever talks to one origin (your domain), never to the backend or
+# model-service directly. That's also why model-service has NO Caddy
+# block and no published port in docker-compose.prod.yml: it's reachable
+# only from the backend container, never from the internet.
+#
+# {$DOMAIN} is substituted from the environment at container start (see
+# docker-compose.prod.yml / .env.docker.example). Two modes, same file:
+# - A real hostname (e.g. centinela.example.com): Caddy issues and renews
+#   its Let's Encrypt certificate for it automatically - no certbot, no
+#   manual renewal cron job, nothing else to configure for HTTPS.
+# - The literal ":80" (the default in .env.docker.example): Caddy listens
+#   on port 80 on every interface in plain HTTP and never attempts a
+#   certificate - useful to try the stack before a domain is bought, or
+#   to run HTTP-only on purpose.
+{$DOMAIN}
+
+encode gzip
+
+@api path /api/* /health
+reverse_proxy @api backend:4000
+
+root * /srv
+file_server
+try_files {path} /index.html

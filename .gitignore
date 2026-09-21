@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Build output
+dist/
+build/
+.docusaurus/
+
+# Environment variables
+.env
+.env.local
+
+# Model weights (usually too large / private for git, use LFS or external storage)
+model-service/weights/*
+!model-service/weights/.gitkeep
+
+# Tiles saved by scripts/test_inference.py (local debugging output only)
+model-service/tiles_output/*
+!model-service/tiles_output/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Data downloaded by ETL scripts (raw open data files) - includes
+# etl/data/mapacyl1/, el land-cover por municipio (download_land_cover.py),
+# que es el dataset mas pesado de todos (miles de ficheros por provincia)
+etl/data/*
+!etl/data/.gitkeep
+
+# Carpetas sueltas en la raiz que NO forman parte de la estructura del
+# proyecto (frontend/backend/model-service/...) y no hacen falta para
+# desplegar la web - resultados brutos de entrenamiento de Ultralytics
+# (graficas, checkpoints duplicados) y capturas de pantalla sueltas.
+/modelo/
+/Claude outputs/

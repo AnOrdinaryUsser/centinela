@@ -1,0 +1,21 @@
+[Unit]
+Description=Centinela CYL - model-service (FastAPI/Ultralytics)
+After=network.target
+
+[Service]
+Type=simple
+User=centinela
+WorkingDirectory=/opt/centinela-cyl/model-service
+EnvironmentFile=/opt/centinela-cyl/model-service/.env
+# Ruta al uvicorn DENTRO del entorno virtual .venv (ver DEPLOYMENT.md,
+# Opcion B) - no el uvicorn global del sistema, que probablemente no
+# tenga instaladas las dependencias de requirements.txt.
+ExecStart=/opt/centinela-cyl/model-service/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

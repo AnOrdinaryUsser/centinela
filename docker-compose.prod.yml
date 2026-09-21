@@ -1,0 +1,104 @@
+# Stack completo de produccion: postgis + backend + model-service +
+# frontend (servido por Caddy, con HTTPS automatico). Pensado para
+# levantarse igual en un servidor Ubuntu (Docker Engine) o en Windows
+# (Docker Desktop) - ver DEPLOYMENT.md, Opcion A.
+#
+# Se mantiene SEPARADO del docker-compose.yml existente (que solo levanta
+# postgis, para desarrollo local) en vez de sustituirlo, para no romper
+# el flujo de desarrollo que ya usabas.
+#
+# Uso:
+#   cp .env.docker.example .env   (y edita DOMAIN, POSTGRES_PASSWORD, etc.)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Nota sobre pesos y datos: model-service/weights/best.pt y los datos
+# cargados por etl/ NO viven en la imagen (estan en .gitignore a
+# proposito) - se montan como volumenes desde el host, ver mas abajo y
+# DEPLOYMENT.md.
+
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: centinela_postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-centinela_cyl}
+      POSTGRES_USER: ${POSTGRES_USER:-centinela}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    volumes:
+      - centinela_postgis_data:/var/lib/postgresql/data
+      - ./database/schema:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-centinela}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Sin "ports:" aqui a proposito: en produccion nada fuera de la red
+    # interna de Docker necesita hablar directamente con Postgres. Si
+    # necesitas conectarte con un cliente SQL desde el host para depurar,
+    # anade temporalmente "ports: [\"5432:5432\"]" o usa
+    # "docker compose -f docker-compose.prod.yml exec postgis psql ...".
+
+  model-service:
+    build:
+      context: ./model-service
+    container_name: centinela_model_service
+    restart: unless-stopped
+    environment:
+      MODEL_SERVICE_PORT: 8000
+      MODEL_WEIGHTS_PATH: ${MODEL_WEIGHTS_PATH:-./weights/best.pt}
+      DEFAULT_CONFIDENCE_THRESHOLD: ${DEFAULT_CONFIDENCE_THRESHOLD:-0.90}
+      PNOA_WMS_URL: ${VITE_PNOA_WMS_URL:-https://www.ign.es/wms-inspire/pnoa-ma}
+    volumes:
+      # Monta tus pesos entrenados desde el host - la carpeta del repo
+      # esta vacia salvo un .gitkeep, ver DEPLOYMENT.md.
+      - ./model-service/weights:/app/weights:ro
+    # Sin "ports:" - solo el backend le habla, por la red interna de
+    # Docker ("http://model-service:8000"), nunca expuesto a internet.
+
+  backend:
+    build:
+      context: ./backend
+    container_name: centinela_backend
+    restart: unless-stopped
+    depends_on:
+      postgis:
+        condition: service_healthy
+    environment:
+      BACKEND_PORT: 4000
+      POSTGRES_HOST: postgis
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-centinela_cyl}
+      POSTGRES_USER: ${POSTGRES_USER:-centinela}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      MODEL_SERVICE_URL: http://model-service:8000
+      ACCESS_TOKEN: ${ACCESS_TOKEN:-}
+    # Sin "ports:" - Caddy (servicio "frontend") es el unico punto de
+    # entrada publico; llega aqui via la red interna ("http://backend:4000").
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
+        VITE_ACCESS_TOKEN: ${VITE_ACCESS_TOKEN:-}
+        VITE_PNOA_WMS_URL: ${VITE_PNOA_WMS_URL:-https://www.ign.es/wms-inspire/pnoa-ma}
+    container_name: centinela_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      DOMAIN: ${DOMAIN:?Debes definir DOMAIN en tu .env - ver .env.docker.example}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Caddy guarda aqui el certificado Let's Encrypt y su estado, para
+      # no tener que volver a pedirlo cada vez que se recrea el contenedor.
+      - centinela_caddy_data:/data
+      - centinela_caddy_config:/config
+
+volumes:
+  centinela_postgis_data:
+  centinela_caddy_data:
+  centinela_caddy_config:

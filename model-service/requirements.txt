@@ -1,0 +1,16 @@
+# Estas versiones estan fijadas asumiendo Python 3.11 (ver README de esta
+# carpeta): a esa version del interprete todas tienen rueda (wheel)
+# precompilada para Windows (torch incluido), asi que no hace falta
+# compilar nada localmente. Si usas otra version de Python y algun install
+# falla, comprueba antes que el venv se creo con Python 3.11 (python --version).
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+python-dotenv==1.0.1
+numpy==1.26.4
+Pillow==10.4.0
+requests==2.32.3
+
+# Modelo real: YOLOv8 (Ultralytics). pip resuelve automaticamente una
+# version de torch (CPU) con rueda para Python 3.11 en Windows.
+ultralytics==8.3.28

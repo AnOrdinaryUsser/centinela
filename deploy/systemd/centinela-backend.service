@@ -1,0 +1,26 @@
+[Unit]
+Description=Centinela CYL - backend (Node/Express)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+# Ajusta el usuario y la ruta a donde hayas clonado/copiado el repo en el
+# servidor. Ejecutar como un usuario sin privilegios (no root) - crealo con
+# "sudo adduser --system --group centinela" si no existe.
+User=centinela
+WorkingDirectory=/opt/centinela-cyl/backend
+# EnvironmentFile carga backend/.env tal cual (POSTGRES_*, BACKEND_PORT,
+# MODEL_SERVICE_URL, ACCESS_TOKEN...) - ver backend/.env.example.
+EnvironmentFile=/opt/centinela-cyl/backend/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+
+# Endurecimiento basico - el proceso no necesita mas que red y su propia
+# carpeta de trabajo.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
