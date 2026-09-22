@@ -32,7 +32,18 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-centinela}"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 30
+      # La primera vez, Postgres no solo arranca: tambien ejecuta TODO
+      # database/schema/*.sql (initdb + CREATE EXTENSION postgis + las 7
+      # migraciones) antes de aceptar conexiones - en un disco lento eso
+      # puede tardar bastante mas que "retries: 10" a 5s (50s), que es lo
+      # que causaba "dependency failed to start: postgis is unhealthy"
+      # aunque Postgres no estuviera roto, solo tardando. start_period da
+      # un margen inicial que no cuenta como fallos; 30 reintentos dan
+      # hasta ~2.5 minutos mas encima de eso antes de darlo por caido de
+      # verdad. Arranques posteriores (ya con los datos en el volumen) son
+      # mucho mas rapidos, esto solo importa en el primer "up".
+      start_period: 60s
     # Sin "ports:" aqui a proposito: en produccion nada fuera de la red
     # interna de Docker necesita hablar directamente con Postgres. Si
     # necesitas conectarte con un cliente SQL desde el host para depurar,
@@ -78,7 +89,11 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      # Contexto = raiz del repo (no ./frontend) - necesario para que el
+      # Dockerfile pueda copiar el /Caddyfile de la raiz, ver el comentario
+      # al principio de frontend/Dockerfile.
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
         VITE_ACCESS_TOKEN: ${VITE_ACCESS_TOKEN:-}

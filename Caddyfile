@@ -20,9 +20,22 @@
 
 encode gzip
 
-@api path /api/* /health
-reverse_proxy @api backend:4000
+# IMPORTANT: Caddy does NOT execute directives in the order they're
+# written in this file - it applies its own fixed internal order, and
+# "try_files" (below) runs BEFORE "reverse_proxy" in that order regardless
+# of source position. Without this "route" block, try_files rewrites any
+# path with no matching static file - including every /api/* request -
+# to /index.html before reverse_proxy ever sees the original path, so the
+# API silently always falls through to the SPA's index.html (confirmed in
+# production: GET /api/... returned 200 + index.html, POST /api/...
+# returned 405, because file_server only accepts GET/HEAD). Wrapping
+# everything in "route { }" forces Caddy to run these directives in
+# exactly the order written here, so @api is checked first.
+route {
+	@api path /api/* /health
+	reverse_proxy @api backend:4000
 
-root * /srv
-file_server
-try_files {path} /index.html
+	root * /srv
+	file_server
+	try_files {path} /index.html
+}

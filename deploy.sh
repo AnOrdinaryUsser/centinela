@@ -75,12 +75,35 @@ if [ ! -f ".env" ]; then
   fi
 fi
 
+# Docker Compose exige que DOMAIN, POSTGRES_PASSWORD, etc. tengan un valor
+# no vacío (ver docker-compose.prod.yml, "${DOMAIN:?...}") - si editaste
+# .env a mano (p.ej. con "nano .env" antes de la primera ejecución de este
+# script) y esas claves faltan o quedaron en blanco, "docker compose up"
+# falla con un error bastante críptico ("required variable ... is missing
+# a value"). Se comprueba aquí primero para dar un mensaje claro.
+require_nonempty() {
+  local key="$1"
+  local value
+  value=$(grep -E "^${key}=" .env 2>/dev/null | tail -n1 | cut -d '=' -f2- || true)
+  if [ -z "$value" ]; then
+    error "Falta (o está vacía) la variable ${key} en .env."
+    MISSING=1
+    return 1
+  fi
+  return 0
+}
+
+require_nonempty "DOMAIN" || true
+require_nonempty "POSTGRES_PASSWORD" || true
+require_nonempty "POSTGRES_DB" || true
+require_nonempty "POSTGRES_USER" || true
+
 # DOMAIN=:80 es un valor válido (modo HTTP sin dominio, ver .env.docker.example)
 # - solo se avisa, no bloquea el despliegue. Sí bloquea si sigue con la
 # contraseña de ejemplo, porque eso es un riesgo real en cuanto el
 # servidor sea accesible desde internet.
 if grep -q '^DOMAIN=:80' .env 2>/dev/null; then
-  warn "DOMAIN=:80 - se desplegará en HTTP plano por el puerto 80, sin dominio ni HTTPS. Cuando compres el dominio, cambia DOMAIN en .env y vuelve a ejecutar este script."
+  warn "DOMAIN=:80 - se desplegará en HTTP plano por el puerto 80, sin dominio ni HTTPS. Cuando el DNS de tu dominio propague, cambia DOMAIN en .env y vuelve a ejecutar este script."
 fi
 if grep -q '^POSTGRES_PASSWORD=change_me' .env 2>/dev/null; then
   error "POSTGRES_PASSWORD sigue siendo 'change_me' en .env. Cámbiala antes de exponer esto a internet."

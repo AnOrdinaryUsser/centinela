@@ -1,0 +1,35 @@
+# Este .dockerignore se aplica SOLO cuando el contexto de build es la raiz
+# del repo - hoy en dia eso es unicamente el servicio "frontend" de
+# docker-compose.prod.yml (ver el comentario en frontend/Dockerfile). Los
+# servicios "backend" y "model-service" siguen usando su propia carpeta
+# como contexto (./backend, ./model-service) y sus propios .dockerignore.
+#
+# Sin este fichero, un build con contexto "." empaquetaria y enviaria al
+# daemon de Docker TODO lo de abajo - node_modules de las dos apps, los
+# datos ETL (incluido el land-cover por municipio, el mas pesado de
+# todos), los pesos del modelo, etc. - por Dockerfile.dockerignore que
+# solo cubre carpetas donde el "COPY frontend/ ." de todos modos jamas
+# los toca. Nada de esto hace falta para construir el frontend.
+
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.venv
+**/dist
+**/.docusaurus
+
+.git
+.env
+.env.local
+*.env
+
+etl/data
+model-service/weights
+model-service/tiles_output
+docs
+
+# Carpetas sueltas fuera de la estructura del proyecto (ver .gitignore)
+/modelo
+/Claude outputs
+
+*.md
