@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { MapContainer, TileLayer, WMSTileLayer, CircleMarker, Popup } from 'react-leaflet'
 import { CAlert } from '@coreui/react'
 import CIcon from '@coreui/icons-react'
-import { cilStorage, cilCheckCircle, cilSatelite } from '@coreui/icons'
+import { cilSatelite } from '@coreui/icons'
 import L from 'leaflet'
 import GridSelector from '../components/GridSelector.jsx'
 import AnalysisGrid from '../components/AnalysisGrid.jsx'
@@ -74,7 +74,17 @@ const MAX_CELLS = 200
 // a weak model-service but painfully slow for "muchas tiles"; a small
 // pool keeps the UI responsive without hammering the WMS/model-service —
 // mirrors MapTilesDownloader's own "Parallel threads" option.
-const CONCURRENCY = 4
+//
+// Lowered from 4 to 2 (2026-09): on the real production server, uvicorn
+// runs model-service with its default single worker/process (see
+// model-service/Dockerfile), so 4 tiles "in parallel" from the frontend
+// really meant 4 CPU-bound YOLO inferences contending for the same CPU
+// core inside that one process - confirmed in practice as the cause of
+// the last couple of tiles in a run failing with a client-side timeout
+// (services/api.js) even though nothing was actually broken, just still
+// queued. 2 keeps things responsive without oversubscribing that worker;
+// see map.panel.stabilityNote for the user-facing explanation.
+const CONCURRENCY = 2
 
 // The confidence threshold ALWAYS sent to the model when analyzing - not
 // whatever the slider happens to show. This is the fix for "el deslizador
@@ -174,14 +184,8 @@ export default function MapPage() {
   // list to save).
   const tileEntriesRef = useRef([])
   const [currentRunId, setCurrentRunId] = useState(null)
-  // True right after addAnalysisRun/updateAnalysisRun had to drop images
-  // to fit the run in localStorage (or couldn't save it at all) - see
-  // services/analyses.js. Previously this only ever reached
-  // console.error, so the only way to notice was opening DevTools.
-  const [storageFull, setStorageFull] = useState(false)
   const [detections, setDetections] = useState([])
   const [logEntries, setLogEntries] = useState([])
-  const [modelVersion, setModelVersion] = useState(null)
   // Purely a DISPLAY filter now (see ANALYSIS_CONFIDENCE_FLOOR above for
   // what actually gets sent to the model): hides detections/map markers
   // below this value out of the full 0.5-1.0 range that's always fetched.
@@ -273,7 +277,6 @@ export default function MapPage() {
     let entry
     try {
       const result = await analyzeCell({ bounds, confidenceThreshold: ANALYSIS_CONFIDENCE_FLOOR })
-      if (result.modelVersion) setModelVersion(result.modelVersion)
       const cellDetections = result.detections ?? []
       updateCellStatus(index, { status: cellDetections.length > 0 ? 'alert' : 'clean' })
       addLog(
@@ -319,7 +322,6 @@ export default function MapPage() {
     setCurrentRunId(null)
     setDetections([])
     setLogEntries([])
-    setModelVersion(null)
     setErrorMessage(null)
     setAnalyzing(true)
     setDrawerOpen(true)
@@ -362,8 +364,10 @@ export default function MapPage() {
       cells: runCells,
     })
     setCurrentRunId(updatedRuns[0]?.id ?? null)
-    setStorageFull(imagesDropped)
-    if (imagesDropped) addLog(t('log.storageFull'), 'error')
+    // Not surfaced to the user (see services/analyses.js) - images are
+    // offloaded to the backend, so this is now a rare edge case, not
+    // something worth a permanent warning banner. console-only.
+    if (imagesDropped) console.warn('No se pudo guardar alguna imagen de esta tirada en el almacenamiento local del navegador; el resto de datos se guardó igualmente.')
 
     try {
       await reportCellAnalyzed({ areaSquareMeters, detectionsCount: totalDetections })
@@ -410,8 +414,7 @@ export default function MapPage() {
       })
       const detectionsCount = cells.reduce((sum, cell) => sum + cell.detections.length, 0)
       const { imagesDropped } = await updateAnalysisRun(currentRunId, { cells, detectionsCount })
-      setStorageFull(imagesDropped)
-      if (imagesDropped) addLog(t('log.storageFull'), 'error')
+      if (imagesDropped) console.warn('No se pudo guardar alguna imagen de esta tirada en el almacenamiento local del navegador; el resto de datos se guardó igualmente.')
     }
 
     setAnalyzing(false)
@@ -575,6 +578,7 @@ export default function MapPage() {
                 ? t('map.panel.previewHint', { count: previewTiles.length, zoom: tileZoom })
                 : t('map.panel.hintIdle')}
           </div>
+          <div className="map-tiles-stability-note">{t('map.panel.stabilityNote')}</div>
 
           {previewTiles.length > 0 && !analyzing && (
             <div className="map-tiles-actions">
@@ -619,18 +623,6 @@ export default function MapPage() {
                 </button>
               )}
             </CAlert>
-          )}
-          {storageFull && (
-            <CAlert color="warning">
-              <CIcon icon={cilStorage} className="me-2" />
-              {t('map.storageFull')}
-            </CAlert>
-          )}
-          {modelVersion && (
-            <div className="map-engine-badge real">
-              <CIcon icon={cilCheckCircle} size="sm" />{' '}
-              {t('map.engineReal')}
-            </div>
           )}
           {(analyzing || runTiles.length > 0) && (
             <div className="map-analysis-progress glass-panel">

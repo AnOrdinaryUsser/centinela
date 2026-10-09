@@ -7,11 +7,21 @@ const router = Router()
 // This is real YOLO inference plus a live PNOA WMS fetch per cell - the
 // single most expensive thing this backend does - so it gets both the
 // access-token gate (a no-op unless ACCESS_TOKEN is set, see
-// accessControl.js) and a tight per-IP cap (20 cells/minute is already
-// generous for one person drawing zones by hand; well short of what a
-// script hammering the endpoint would do).
+// accessControl.js) and a per-IP cap.
+//
+// 220 cells/minute (2026-09, raised from 20): 20/min looked generous for
+// "one person drawing zones by hand" in isolation, but in practice a
+// single legitimate run easily sends more than that - MapPage.jsx already
+// caps one run at MAX_CELLS=200 cells, so this limiter's real job is
+// "don't let one IP fire off MORE than about one max-size run per
+// minute", not "cap how big one run can be". At the old 20/min, any run
+// past ~20 cells started getting some of its own later cells rejected
+// with 429 mid-run, which is exactly what was happening here - not a
+// timeout, not model-service, just this cap. Kept well above MAX_CELLS
+// so a real single run is never throttled by this, while still stopping
+// a script from firing repeated max-size runs back to back.
 const analyzeRateLimit = createRateLimiter({
-  max: 20,
+  max: 220,
   windowMs: 60_000,
   message: 'Demasiados analisis en poco tiempo. Espera un momento antes de dibujar mas zonas.',
 })

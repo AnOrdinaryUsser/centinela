@@ -5,10 +5,15 @@ import { requireAccessToken, createRateLimiter } from '../middleware/accessContr
 const router = Router()
 
 // Up to a 2mb base64 image per request (see the express.json limit in
-// app.js) - a generous cap still keeps someone from filling the database
-// with junk uploads.
+// app.js). One upload per analyzed cell (see services/analyses.js), so
+// this needs the same headroom as analyzeRateLimit above and for the same
+// reason - raised from 60/min (2026-09) after a single ~55-cell run
+// legitimately tripped it partway through, which showed up in the browser
+// console as "Could not upload cell image... 429" (harmless on its own,
+// the image just stays embedded locally instead - see analyses.js - but
+// still a symptom of the same too-tight cap).
 const uploadRateLimit = createRateLimiter({
-  max: 60,
+  max: 220,
   windowMs: 60_000,
   message: 'Demasiadas imagenes subidas en poco tiempo.',
 })

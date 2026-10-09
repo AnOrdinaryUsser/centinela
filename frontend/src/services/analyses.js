@@ -20,13 +20,6 @@ import { uploadAnalysisImage, getAnalysisImageUrl } from './api.js'
 
 const STORAGE_KEY = 'centinela_analysis_runs'
 
-// Browsers don't expose an API to ask "how much localStorage do I actually
-// have left" (navigator.storage.estimate() covers IndexedDB/caches, not
-// localStorage specifically) - 5MB/origin is the conservative, long-
-// standing de-facto minimum every major browser grants, so it's used here
-// only to give an honest, rough "how full am I" reading, not an exact one.
-const ESTIMATED_QUOTA_BYTES = 5 * 1024 * 1024
-
 export function getAnalysisRuns() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -34,24 +27,6 @@ export function getAnalysisRuns() {
   } catch (error) {
     console.error('Could not read analysis runs from localStorage', error)
     return []
-  }
-}
-
-// How much of the estimated quota centinela_analysis_runs is actually
-// using right now, so the UI can show it instead of the user having to
-// dig through DevTools - see AnalysisPage.jsx.
-export function getStorageUsage() {
-  let usedBytes = 0
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) usedBytes = new Blob([raw]).size
-  } catch (error) {
-    console.error('Could not estimate localStorage usage', error)
-  }
-  return {
-    usedBytes,
-    estimatedQuotaBytes: ESTIMATED_QUOTA_BYTES,
-    percent: Math.min(100, Math.round((usedBytes / ESTIMATED_QUOTA_BYTES) * 100)),
   }
 }
 
@@ -115,9 +90,10 @@ function persistWithFallback(runs, entry, buildList) {
 // run: { boundsSummary, zoom, cellCount, areaSquareMeters, cells: [{ bounds, image, detections }] }
 // Returns { runs, imagesDropped }: imagesDropped is true when a cell image
 // couldn't be offloaded to the backend AND localStorage was too full to
-// keep it embedded either (or couldn't save the run at all) - see
-// getStorageUsage() above for how the UI shows this before it becomes a
-// problem. Now async (it awaits the image uploads) - callers need `await`.
+// keep it embedded either (or couldn't save the run at all) - a rare edge
+// case now that images live in the backend, logged with console.warn where
+// it happens (see MapPage.jsx) rather than shown to the user. Now async (it
+// awaits the image uploads) - callers need `await`.
 export async function addAnalysisRun(run) {
   const cells = await offloadImagesToServer(run.cells)
   const runs = getAnalysisRuns()

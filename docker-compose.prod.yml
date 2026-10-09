@@ -83,9 +83,42 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-centinela}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       MODEL_SERVICE_URL: http://model-service:8000
+      # Cuántas peticiones de inferencia deja pasar el backend a la vez
+      # hacia model-service, sea cual sea el número de usuarios que estén
+      # analizando a la vez - ver backend/src/services/modelClient.js.
+      # Por defecto 2, a juego con el único worker de uvicorn con el que
+      # arranca model-service (ver model-service/Dockerfile). Solo tiene
+      # sentido subirlo si tambien se sube el numero de workers/CPU de
+      # model-service.
+      MODEL_SERVICE_CONCURRENCY: ${MODEL_SERVICE_CONCURRENCY:-2}
       ACCESS_TOKEN: ${ACCESS_TOKEN:-}
     # Sin "ports:" - Caddy (servicio "frontend") es el unico punto de
     # entrada publico; llega aqui via la red interna ("http://backend:4000").
+
+  # Ejecuta los scripts de etl/scripts/*.py contra "postgis" por la red
+  # interna de Docker - nunca arranca solo ("up -d"), solo se lanza a
+  # demanda con "docker compose ... run --rm etl python scripts/<script>.py"
+  # (ver deploy.sh, paso 5, y DEPLOYMENT.md). El profile "etl" es justo para
+  # eso: lo mantiene fuera de un "docker compose up" normal.
+  etl:
+    profiles: ["etl"]
+    build:
+      context: ./etl
+    container_name: centinela_etl
+    depends_on:
+      postgis:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgis
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-centinela_cyl}
+      POSTGRES_USER: ${POSTGRES_USER:-centinela}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    volumes:
+      # Los ficheros fuente (.xlsx, .gpkg, .zip, .json...) se suben por
+      # SFTP a etl/data/ en el host - ver DEPLOYMENT.md. Montados de solo
+      # lectura: los scripts solo leen de aquí, nunca escriben.
+      - ./etl/data:/app/data:ro
 
   frontend:
     build:

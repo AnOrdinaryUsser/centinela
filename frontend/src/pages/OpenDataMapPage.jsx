@@ -329,7 +329,15 @@ export default function OpenDataMapPage() {
   useEffect(() => {
     if (!landCoverOn || landCoverMeta) return
     getLandCoverMeta()
-      .then((data) => setLandCoverMeta(data))
+      .then((data) => {
+        setLandCoverMeta(data)
+        // Informativo solo para quien administra el servidor (falta correr
+        // el ETL de cubierta terrestre para al menos una provincia) - no es
+        // un error del usuario, así que no se muestra en la web, solo aquí.
+        if (data.length === 0) {
+          console.info(t('opendata.landCoverNoneLoaded'))
+        }
+      })
       .catch(() => setLayerError((prev) => ({ ...prev, landCover: t('opendata.layerError') })))
   }, [landCoverOn, landCoverMeta, t])
 
@@ -755,10 +763,6 @@ export default function OpenDataMapPage() {
               <small>{landCoverMeta ? t('opendata.landCoverProvinceCount', { count: landCoverMeta.length }) : ''}</small>
             </span>
           </label>
-
-          {landCoverOn && landCoverMeta && landCoverMeta.length === 0 && (
-            <p className="opendata-hint">{t('opendata.landCoverNoneLoaded')}</p>
-          )}
 
           {landCoverOn && landCoverMeta && landCoverMeta.length > 0 && (
             <div className="opendata-landcover-selectors">

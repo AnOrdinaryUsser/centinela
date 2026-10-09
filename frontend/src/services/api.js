@@ -24,17 +24,21 @@ const BACKEND_URL =
     ? import.meta.env.VITE_BACKEND_URL
     : `${window.location.protocol}//${window.location.hostname}:4000`
 
-// 65s: must stay ABOVE the backend's own timeout when it calls the
-// model-service (60s, see backend/src/services/modelClient.js). Real YOLO
-// inference on CPU plus a PNOA WMS fetch can take a while, and with
-// several cells analyzed in parallel (see MapPage's CONCURRENCY) later
-// ones in the batch queue behind earlier ones - if this timeout were
-// SHORTER than the backend's, cells that the backend would have finished
-// successfully were being aborted here first, which is why some cells in
-// a run used to silently come back as "error" with nothing saved.
+// 200s (>=3 min): must stay ABOVE the backend's own timeout when it calls
+// the model-service (190s, see backend/src/services/modelClient.js). Real
+// YOLO inference on CPU plus a PNOA WMS fetch can take a while - if this
+// timeout were SHORTER than the backend's, cells the backend would have
+// finished successfully would be aborted here first, which is why some
+// cells in a run used to silently come back as "error" with nothing
+// saved. Since this clock counts from when the browser sends the
+// request - which includes however long it waits behind the backend's
+// global concurrency limiter (see modelClient.js) if several users are
+// analyzing at once, not just the inference itself - 200s gives enough
+// slack for a handful of cells queued ahead of it without letting a
+// genuinely stuck request hang forever.
 const client = axios.create({
   baseURL: BACKEND_URL,
-  timeout: 65000,
+  timeout: 200000,
 })
 
 // Only set when you've opted into the backend's access-token gate (see

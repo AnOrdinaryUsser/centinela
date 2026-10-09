@@ -137,6 +137,56 @@ docker compose -f docker-compose.prod.yml up -d --build
 info "Estado de los contenedores:"
 docker compose -f docker-compose.prod.yml ps
 
+# ---------- 5. Cargar los datasets de datos abiertos (ETL) ----------
+# Cada script se ejecuta dentro de la red de Docker (servicio "etl", ver
+# docker-compose.prod.yml) contra el "postgis" ya levantado - nada de tocar
+# la version de Python del host ni exponer el puerto de la base de datos.
+# Por dataset: si el fichero fuente que necesita no esta en etl/data/, se
+# avisa y se salta (no es un fallo del despliegue - simplemente ese dataset
+# no se cargara todavia). Sigue la misma filosofia que los propios scripts:
+# un dataset que falla o no esta listo no debe impedir que se carguen los
+# demas.
+info "Cargando datasets de datos abiertos (etl)..."
+docker compose -f docker-compose.prod.yml --profile etl build etl
+
+run_etl() {
+  local description="$1"
+  local script="$2"
+  shift 2
+  local required_files=("$@")
+  local missing=0
+  for f in "${required_files[@]}"; do
+    if [ ! -e "etl/data/$f" ]; then
+      warn "  [$description] falta etl/data/$f - sube ese fichero por SFTP y vuelve a ejecutar ./deploy.sh para cargar este dataset. Saltando."
+      missing=1
+    fi
+  done
+  if [ "$missing" -eq 1 ]; then return; fi
+  info "  [$description] ejecutando $script..."
+  if ! docker compose -f docker-compose.prod.yml --profile etl run --rm etl python "$script"; then
+    warn "  [$description] el script terminó con error - revisa el mensaje anterior. El resto del despliegue continúa."
+  fi
+}
+
+run_etl "Espacios naturales protegidos"      "scripts/load_protected_areas.py"          "en_cyl_ren_limites.xlsx"
+run_etl "Límites de espacios protegidos"     "scripts/load_protected_area_boundaries.py" "en_cyl_ren_limites.gpkg"
+run_etl "Masas de agua (ríos y lagos)"       "scripts/load_hydrography.py"              "hy_hidro_cyl_masas.zip"
+run_etl "Centros de gestión de residuos"     "scripts/load_waste_facilities.py"         "residuos_resumen.json"
+
+# La cubierta terrestre (mapacyl1) NO se carga aquí a propósito: es varios
+# GB, se descarga provincia a provincia desde opendata.jcyl.es (no es un
+# fichero que subas tú) y puede tardar bastante - automatizarla en cada
+# despliegue sería lento y consumiría ancho de banda/disco sin que lo hayas
+# pedido. Se sigue haciendo aparte, ver DEPLOYMENT.md.
+if [ -d "etl/data/mapacyl1" ] && [ -n "$(ls -A etl/data/mapacyl1 2>/dev/null)" ]; then
+  info "  [Cubierta terrestre] etl/data/mapacyl1/ ya tiene datos descargados - ejecutando load_land_cover.py..."
+  if ! docker compose -f docker-compose.prod.yml --profile etl run --rm etl python scripts/load_land_cover.py; then
+    warn "  [Cubierta terrestre] el script terminó con error - revisa el mensaje anterior."
+  fi
+else
+  warn "  [Cubierta terrestre] no hay nada en etl/data/mapacyl1/ todavía - es un dataset de varios GB y no se descarga automáticamente. Ver 'Cargar la cubierta terrestre' en DEPLOYMENT.md."
+fi
+
 DOMAIN_VALUE=$(grep '^DOMAIN=' .env | cut -d '=' -f2-)
 echo ""
 if [ "$DOMAIN_VALUE" = ":80" ]; then
@@ -147,4 +197,4 @@ else
 fi
 info "Sigue el progreso de Caddy con:"
 echo "    docker compose -f docker-compose.prod.yml logs -f frontend"
-info "Para cargar los datasets de datos abiertos, ver la sección correspondiente de DEPLOYMENT.md."
+info "Los datasets de datos abiertos cuyos ficheros ya estaban en etl/data/ se han cargado automáticamente (ver arriba). La cubierta terrestre (mapacyl1) sigue siendo aparte por su tamaño - ver DEPLOYMENT.md."

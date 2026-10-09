@@ -1,0 +1,7 @@
+# Los datos pesados se montan como volumen (ver Dockerfile / docker-compose.prod.yml),
+# nunca se copian a la imagen.
+data
+.venv
+__pycache__
+*.pyc
+.env

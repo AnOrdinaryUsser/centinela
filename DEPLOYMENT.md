@@ -101,23 +101,32 @@ En un par de minutos, `https://tudominio.es` debería responder con la app, con 
 
 ### 5. Cargar los datasets de datos abiertos
 
-Con los contenedores ya arriba, ejecuta los scripts ETL apuntando a la base de datos del contenedor `postgis` (expón temporalmente el puerto o ejecuta el script desde dentro de la red de Docker):
+Si usas `deploy.sh` (recomendado), este paso es automático: al final del despliegue, el script construye una imagen ligera (`etl/Dockerfile`, servicio `etl` en `docker-compose.prod.yml`, Python 3.12 - no depende de qué versión de Python tenga tu servidor) y ejecuta cada script ETL dentro de la red de Docker contra `postgis`, sin exponer su puerto hacia fuera. Para cada dataset, solo hace falta que su fichero fuente ya esté en `etl/data/` (subido por SFTP, ver el paso 2 más arriba) - si falta, `deploy.sh` avisa y sigue con el resto:
+
+| Dataset | Fichero fuente necesario |
+|---|---|
+| Espacios naturales protegidos | `etl/data/en_cyl_ren_limites.xlsx` |
+| Límites de espacios protegidos | `etl/data/en_cyl_ren_limites.gpkg` |
+| Masas de agua (ríos y lagos) | `etl/data/hy_hidro_cyl_masas.zip` |
+| Centros de gestión de residuos | `etl/data/residuos_resumen.json` |
+| Cubierta terrestre (mapacyl1) | `etl/data/mapacyl1/<Provincia>/...` (ver más abajo) |
+
+Si subes un fichero que faltaba después del primer despliegue, vuelve a ejecutar `sudo ./deploy.sh` para cargarlo (el resto del despliegue no se repite innecesariamente, Docker solo reconstruye lo que cambió).
+
+**Cargar la cubierta terrestre (mapacyl1):** es un dataset de varios GB (hasta ~500MB solo por provincia) que se descarga directamente desde `opendata.jcyl.es`, así que `deploy.sh` NO lo descarga automáticamente - solo lo carga a la base de datos si ya hay algo en `etl/data/mapacyl1/`. Para descargarlo, desde el servidor:
 
 ```bash
-# Opción rápida: ejecutar los scripts desde tu propia máquina, apuntando
-# al puerto de postgis (añade temporalmente "ports: [\"5432:5432\"]" al
-# servicio postgis en docker-compose.prod.yml y recarga con
-# "docker compose -f docker-compose.prod.yml up -d" antes de esto):
-cd etl
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env    # ajusta POSTGRES_HOST=tu-servidor, POSTGRES_PORT=5432
-python scripts/load_waste_facilities.py
-python scripts/load_hydrography.py
-python scripts/load_protected_areas.py
+docker compose -f docker-compose.prod.yml --profile etl build etl
+docker compose -f docker-compose.prod.yml --profile etl run --rm etl \
+  python scripts/download_land_cover.py --province Salamanca   # o la(s) que quieras; sin --province descarga las 9
+sudo ./deploy.sh   # vuelve a ejecutarlo para que cargue lo recién descargado
 ```
 
-Quita de nuevo el `ports:` de `postgis` en `docker-compose.prod.yml` cuando termines, si no necesitas acceso externo a la base de datos de forma permanente (ver la nota de seguridad en ese mismo fichero).
+**Ejecutar un script ETL suelto a mano** (por ejemplo para volver a cargar solo uno tras corregir un dato), sin pasar por `deploy.sh`:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile etl run --rm etl python scripts/load_hydrography.py
+```
 
 ### 6. Actualizar tras un cambio de código
 
